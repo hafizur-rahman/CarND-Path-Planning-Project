@@ -5,8 +5,11 @@
 #include <vector>
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
-#include "helpers.h"
+
 #include "json.hpp"
+#include "vehicle.h"
+#include "helpers.h"
+#include "planner.h"
 
 // for convenience
 using nlohmann::json;
@@ -50,10 +53,19 @@ int main() {
     map_waypoints_dy.push_back(d_y);
   }
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy]
-              (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
-               uWS::OpCode opCode) {
+  Vehicle ego_car;
+  Planner planner(map_waypoints_x, map_waypoints_y, map_waypoints_s);
+
+  h.onMessage([
+                &ego_car,
+                &planner,
+                &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
+                &map_waypoints_dx,&map_waypoints_dy
+              ]
+              (
+                uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+                uWS::OpCode opCode
+              ) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -78,8 +90,8 @@ int main() {
           double car_speed = j[1]["speed"];
 
           // Previous path data given to the Planner
-          auto previous_path_x = j[1]["previous_path_x"];
-          auto previous_path_y = j[1]["previous_path_y"];
+          vector<double> previous_path_x = j[1]["previous_path_x"];
+          vector<double> previous_path_y = j[1]["previous_path_y"];
           // Previous path's end s and d values 
           double end_path_s = j[1]["end_path_s"];
           double end_path_d = j[1]["end_path_d"];
@@ -87,6 +99,48 @@ int main() {
           // Sensor Fusion Data, a list of all other cars on the same side 
           //   of the road.
           auto sensor_fusion = j[1]["sensor_fusion"];
+
+          if (previous_path_x.size() > 0) {
+            car_s = end_path_s;
+          }
+
+          // Update ego car status
+          ego_car.updateStatus(
+            car_x,
+            car_y,
+            car_speed,
+            car_s,
+            car_d,
+            car_yaw
+          );
+
+          vector<Vehicle> left_lane;
+          vector<Vehicle> center_lane;
+          vector<Vehicle> right_lane;
+
+          for (int i=0; i < sensor_fusion.size(); i++) {
+            int id = sensor_fusion[i][0];
+            double x = sensor_fusion[i][1];
+            double y = sensor_fusion[i][2];
+            double vx = sensor_fusion[i][3];
+            double vy = sensor_fusion[i][4];
+            double s = sensor_fusion[i][5];
+            double d = sensor_fusion[i][6];
+
+            double v = sqrt(vx*vx + vy*vy);
+
+            Vehicle other_car(id, x, y, v, s, d);
+            int lane = other_car.lane();
+            if (lane == 0) {
+              left_lane.push_back(other_car);
+            } else if (lane == 1) {
+              center_lane.push_back(other_car);
+            } else if (lane == 2) {
+              right_lane.push_back(other_car);
+            } 
+          }
+
+          Road road(left_lane, center_lane, right_lane);
 
           json msgJson;
 
@@ -96,7 +150,9 @@ int main() {
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
            *   sequentially every .02 seconds
-           */
+           */          
+
+          planner.plan(road, ego_car, previous_path_x, previous_path_y, next_x_vals, next_y_vals);
 
 
           msgJson["next_x"] = next_x_vals;
