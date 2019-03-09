@@ -98,35 +98,82 @@ void Planner::plan(
     int prev_size = previous_path_x.size();
 
     double MAX_SPEED = 49.5;
-    double MAX_ACC = 0.2;
+    double MAX_ACC = 0.22;
     double speed_diff = 0.0;
 
     int current_lane = ego_car.lane();
     
-    Vehicle& car_ahead = r.findCarAhead(ego_car, prev_size);
-
-    double dist = 0;
-    double is_close = false;
-    
-    if (car_ahead.getId() >= 0) {
-        dist = car_ahead.predictS(prev_size) - ego_car.getS();
-        is_close = dist > 0 && dist < 30;
+    vector<Vehicle> front_cars;
+    vector<Vehicle> back_cars;
+    for (int i = 0; i < 3; i++) {
+        front_cars.push_back(r.findCarAtLane(i, ego_car, prev_size, true));
+        back_cars.push_back(r.findCarAtLane(i, ego_car, prev_size, false));
     }
 
-    bool is_safe_left = r.isSafeLaneChange(ego_car, current_lane - 1, prev_size);
-    bool is_safe_right = r.isSafeLaneChange(ego_car, current_lane + 1, prev_size);
+    double front_gap = 0;
+    double left_front_gap = 0;
+    double left_back_gap = 0;
+    double right_front_gap = 0;
+    double right_back_gap = 0;
+
+    double is_close = false;
+
+    Vehicle& car_ahead = front_cars[current_lane];
+
+    if (car_ahead.getId() >= 0) {
+        front_gap = abs(car_ahead.predictS(prev_size) - ego_car.getS());
+        is_close = front_gap < 30;
+    }
+
+    if (current_lane > 0) {
+        if (front_cars[current_lane-1].getId() >= 0) {
+            left_front_gap = abs(front_cars[current_lane-1].predictS(prev_size) - ego_car.getS());
+        }
+
+        if (back_cars[current_lane-1].getId() >= 0) {
+            left_back_gap = ego_car.getS() - back_cars[current_lane-1].predictS(prev_size);
+        }
+    }
+
+    if (current_lane < 2) {
+        if (front_cars[current_lane+1].getId() >= 0) {
+            right_front_gap = abs(front_cars[current_lane+1].predictS(prev_size) - ego_car.getS());
+        }
+        if (back_cars[current_lane+1].getId() >= 0) {
+            right_back_gap = ego_car.getS() - back_cars[current_lane+1].predictS(prev_size);
+        }
+    }
+
+    printf("F:%.2f, LF: %.2f, LB: %.2f, RF: %.2f, RB: %.2f\n", front_gap, left_front_gap, left_back_gap, right_front_gap, right_back_gap);
+
+    bool is_safe_left = current_lane > 0 && left_front_gap > 30 && left_back_gap > 30;
+    bool is_safe_right = current_lane < 2 && right_front_gap > 30 && right_back_gap > 30;
 
     bool no_recent_lane_chane = kl_ts > 10;
     
     if (is_close) {
-        if (is_safe_left && no_recent_lane_chane) {
-            changeLane(current_lane - 1);
-        } else if (is_safe_right && no_recent_lane_chane) {
-            changeLane(current_lane + 1);
+        if (no_recent_lane_chane && (is_safe_left || is_safe_right)) {
+            int target_lane;
+            
+            if (is_safe_left && is_safe_right) {
+                target_lane = left_front_gap > right_front_gap ? current_lane - 1 : current_lane + 1;
+            } else if (is_safe_left) {
+                target_lane = current_lane - 1;
+            } else /*if (is_safe_right) */ {
+                target_lane = current_lane + 1;
+            }
+
+            printf("Changing lane from %d to %d\n", current_lane, target_lane);
+
+            changeLane(target_lane); 
         } else {
             if (ref_vel > car_ahead.getV()) {                
                 // Slow down
                 ref_vel -= MAX_ACC;
+            }
+
+            if (front_gap < 15) {
+                speed_diff -= MAX_ACC/2;
             }
 
             kl_ts += 1;
@@ -134,6 +181,8 @@ void Planner::plan(
     } else {
         bool is_change_lane = (current_lane == 0 && is_safe_right) || (current_lane == 2 && is_safe_left);
         if (is_change_lane && no_recent_lane_chane) {
+            printf("Changing lane from %d to %d\n", current_lane, 1);
+
             // if not in center lane try to move to center lane
             changeLane(1);
 
@@ -142,6 +191,8 @@ void Planner::plan(
             kl_ts += 1;
         }
         
+        double back_car_speed = back_cars[ego_car.lane()].getV();
+
         if (ref_vel < MAX_SPEED && !is_change_lane) {
             speed_diff += MAX_ACC;
         }

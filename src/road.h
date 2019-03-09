@@ -17,7 +17,7 @@ public:
 
     vector<Vehicle> getLaneStatus(int lane);
 
-    Vehicle& findCarAhead(Vehicle& ego_car, int ts);
+    Vehicle& findCarAtLane(int lane_id, Vehicle& ego_car, int ts, bool is_front);
     bool isSafeLaneChange(Vehicle& ego_car, int target_lane, int ts);
 };
 

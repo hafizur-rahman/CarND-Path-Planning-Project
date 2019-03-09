@@ -17,10 +17,8 @@ vector<Vehicle> Road::getLaneStatus(int lane) {
     }
 }
 
-Vehicle& Road::findCarAhead(Vehicle& ego_car, int ts) {
-    int current_lane = ego_car.lane();
-
-    vector<Vehicle> lane_status = getLaneStatus(current_lane);
+Vehicle& Road::findCarAtLane(int lane_id, Vehicle& ego_car, int ts, bool is_front) {
+    vector<Vehicle> lane_status = getLaneStatus(lane_id);
            
     int closest_car_idx = -1;
     float min_dist = 999999;
@@ -30,6 +28,10 @@ Vehicle& Road::findCarAhead(Vehicle& ego_car, int ts) {
         Vehicle& v = lane_status[i];
         
         float dist = v.predictS(ts) - ego_car.getS();
+        if (!is_front) {
+            dist *= -1;
+        }
+
         if (dist > 0 && dist < min_dist) {            
             min_dist = dist;
             closest_car_idx = i;
