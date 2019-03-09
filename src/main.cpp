@@ -137,7 +137,7 @@ int main() {
               center_lane.push_back(other_car);
             } else if (lane == 2) {
               right_lane.push_back(other_car);
-            } 
+            }
           }
 
           Road road(left_lane, center_lane, right_lane);

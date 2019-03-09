@@ -9,6 +9,8 @@ Planner::Planner(vector<double>& map_waypoints_x, vector<double>& map_waypoints_
     this->map_waypoints_x = map_waypoints_x;
     this->map_waypoints_y = map_waypoints_y;
     this->map_waypoints_s = map_waypoints_s;
+
+    this->kl_ts = 0;
 }
 
 void Planner::keepLane(Vehicle& car) {
@@ -17,6 +19,7 @@ void Planner::keepLane(Vehicle& car) {
 
 void Planner::changeLane(int target_lane) {
     this->target_lane = target_lane;
+    this->kl_ts = 0;
 }
 
 tk::spline Planner::makeSpline(Vehicle& ego_car, vector<double>& previous_path_x, vector<double>& previous_path_y) {
@@ -95,31 +98,51 @@ void Planner::plan(
     int prev_size = previous_path_x.size();
 
     double MAX_SPEED = 49.5;
-    double MAX_ACC = 0.224;
+    double MAX_ACC = 0.2;
     double speed_diff = 0.0;
 
     int current_lane = ego_car.lane();
+    
+    Vehicle& car_ahead = r.findCarAhead(ego_car, prev_size);
 
-    bool is_car_ahead = r.isCarAhead(ego_car, prev_size);
+    double dist = 0;
+    double is_close = false;
+    
+    if (car_ahead.getId() >= 0) {
+        dist = car_ahead.predictS(prev_size) - ego_car.getS();
+        is_close = dist > 0 && dist < 30;
+    }
+
     bool is_safe_left = r.isSafeLaneChange(ego_car, current_lane - 1, prev_size);
     bool is_safe_right = r.isSafeLaneChange(ego_car, current_lane + 1, prev_size);
 
-    if (is_car_ahead) {
-        if (is_safe_left) {
+    bool no_recent_lane_chane = kl_ts > 10;
+    
+    if (is_close) {
+        if (is_safe_left && no_recent_lane_chane) {
             changeLane(current_lane - 1);
-        } else if (is_safe_right) {
+        } else if (is_safe_right && no_recent_lane_chane) {
             changeLane(current_lane + 1);
-        } else {            
-            // TODO maintain lane speed
-            speed_diff -= MAX_ACC;            
+        } else {
+            if (ref_vel > car_ahead.getV()) {                
+                // Slow down
+                ref_vel -= MAX_ACC;
+            }
+
+            kl_ts += 1;
         }
     } else {
-        if ((current_lane == 0 && is_safe_right) || (current_lane == 2 && is_safe_left)) {
+        bool is_change_lane = (current_lane == 0 && is_safe_right) || (current_lane == 2 && is_safe_left);
+        if (is_change_lane && no_recent_lane_chane) {
             // if not in center lane try to move to center lane
             changeLane(1);
+
+            ref_vel -= MAX_ACC;
+        } else {
+            kl_ts += 1;
         }
         
-        if (ref_vel < MAX_SPEED) {
+        if (ref_vel < MAX_SPEED && !is_change_lane) {
             speed_diff += MAX_ACC;
         }
     }

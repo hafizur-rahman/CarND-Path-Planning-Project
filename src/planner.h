@@ -19,6 +19,8 @@ class Planner {
     double ref_yaw;
     double ref_vel;
 
+    int kl_ts;
+
 protected:
     void keepLane(Vehicle& car);
     void changeLane(int target_lane);    

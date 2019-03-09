@@ -17,23 +17,26 @@ vector<Vehicle> Road::getLaneStatus(int lane) {
     }
 }
 
-bool Road::isCarAhead(Vehicle& ego_car, int ts) {
+Vehicle& Road::findCarAhead(Vehicle& ego_car, int ts) {
     int current_lane = ego_car.lane();
 
     vector<Vehicle> lane_status = getLaneStatus(current_lane);
-    
-    bool car_ahead = false;
+           
+    int closest_car_idx = -1;
+    float min_dist = 999999;
+    Vehicle car_ahead = Vehicle();
+
     for (int i = 0; i < lane_status.size(); i++) {
         Vehicle& v = lane_status[i];
         
-        bool is_close = v.predictS(ts) > ego_car.getS() && (v.predictS(ts) - ego_car.getS() < 30);
-
-        printf("id: %d, %f, %f, Close: %d\n", v.getId(), v.getS(), ego_car.getS(), is_close);
-
-        car_ahead |= is_close;
+        float dist = v.predictS(ts) - ego_car.getS();
+        if (dist > 0 && dist < min_dist) {            
+            min_dist = dist;
+            closest_car_idx = i;
+        }
     }
 
-    return car_ahead;
+    return closest_car_idx >= 0 ? lane_status[closest_car_idx] : car_ahead;
 }
 
 bool Road::isSafeLaneChange(Vehicle& ego_car, int target_lane, int ts) {
