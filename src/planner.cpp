@@ -152,22 +152,22 @@ void Planner::plan(
     bool no_recent_lane_chane = kl_ts > 10;
     
     if (is_close) {
-        if (no_recent_lane_chane && (is_safe_left || is_safe_right)) {
-            int target_lane;
-            
-            if (is_safe_left && is_safe_right) {
-                target_lane = left_front_gap > right_front_gap ? current_lane - 1 : current_lane + 1;
-            } else if (is_safe_left) {
-                target_lane = current_lane - 1;
-            } else /*if (is_safe_right) */ {
-                target_lane = current_lane + 1;
-            }
+        int target_lane = ego_car.lane();            
+        if (is_safe_left && is_safe_right) {
+            target_lane = left_front_gap > right_front_gap ? current_lane - 1 : current_lane + 1;
+        } else if (is_safe_left) {
+            target_lane = current_lane - 1;
+        } else if (is_safe_right) {
+            target_lane = current_lane + 1;
+        }
 
+        if (no_recent_lane_chane && ego_car.lane() != target_lane) {
             printf("Changing lane from %d to %d\n", current_lane, target_lane);
 
-            changeLane(target_lane); 
+            changeLane(target_lane);
+            ref_vel -= MAX_ACC;
         } else {
-            if (ref_vel > car_ahead.getV()) {                
+            if (ref_vel > car_ahead.getV()) {
                 // Slow down
                 ref_vel -= MAX_ACC;
             }
@@ -185,7 +185,6 @@ void Planner::plan(
 
             // if not in center lane try to move to center lane
             changeLane(1);
-
             ref_vel -= MAX_ACC;
         } else {
             kl_ts += 1;
